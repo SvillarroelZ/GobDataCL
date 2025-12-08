@@ -1,5 +1,9 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+const MAX_REQUEST_TIMEOUT = 30000
+const MAX_GOVERNMENT_IDS = 10
+const VALID_CODE_PATTERN = /^[a-z_]+$/
+
 import type {
   Government,
   GovernmentSummary,
@@ -10,73 +14,161 @@ import type {
   ApiError,
 } from '../types'
 
+function sanitizeId(id: number): number {
+  const numId = Number(id)
+  if (!Number.isInteger(numId) || numId < 1 || numId > 1000000) {
+    throw new Error('ID invalido')
+  }
+  return numId
+}
+
+function sanitizeCode(code: string): string {
+  const trimmed = code.trim().toLowerCase()
+  if (!VALID_CODE_PATTERN.test(trimmed) || trimmed.length > 50) {
+    throw new Error('Codigo de indicador invalido')
+  }
+  return trimmed
+}
+
+function sanitizeGovernmentIds(ids: number[]): number[] {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new Error('Se requiere al menos un ID de gobierno')
+  }
+  if (ids.length > MAX_GOVERNMENT_IDS) {
+    throw new Error(`No se pueden comparar mas de ${MAX_GOVERNMENT_IDS} gobiernos`)
+  }
+  return ids.map(sanitizeId)
+}
+
 class ApiService {
   private baseUrl: string
+  private abortControllers: Map<string, AbortController> = new Map()
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl
   }
 
-  private async fetch<T>(endpoint: string): Promise<T> {
+  private cancelPreviousRequest(key: string): void {
+    const existingController = this.abortControllers.get(key)
+    if (existingController) {
+      existingController.abort()
+    }
+  }
+
+  private async fetch<T>(endpoint: string, requestKey?: string): Promise<T> {
+    if (requestKey) {
+      this.cancelPreviousRequest(requestKey)
+    }
+
+    const controller = new AbortController()
+    if (requestKey) {
+      this.abortControllers.set(requestKey, controller)
+    }
+
+    const timeoutId = setTimeout(() => controller.abort(), MAX_REQUEST_TIMEOUT)
+
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`)
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+        },
+        credentials: 'omit',
+      })
+      
+      clearTimeout(timeoutId)
       
       if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({
-          detail: `Error ${response.status}: ${response.statusText}`,
-        }))
-        throw new Error(error.detail || 'Error desconocido')
+        let errorDetail = `Error ${response.status}: ${response.statusText}`
+        try {
+          const error: ApiError = await response.json()
+          errorDetail = error.detail || errorDetail
+        } catch {
+          // Keep default error message
+        }
+        throw new Error(errorDetail)
       }
       
-      return response.json()
+      const data = await response.json()
+      return data as T
     } catch (error) {
+      clearTimeout(timeoutId)
+      
       if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('La solicitud fue cancelada o tomo demasiado tiempo')
+        }
         throw error
       }
       throw new Error('Error de conexion. Verifica tu conexion a internet.')
+    } finally {
+      if (requestKey) {
+        this.abortControllers.delete(requestKey)
+      }
     }
   }
 
   async getGovernments(): Promise<Government[]> {
-    return this.fetch<Government[]>('/governments')
+    return this.fetch<Government[]>('/governments', 'governments')
   }
 
   async getGovernment(id: number): Promise<Government> {
-    return this.fetch<Government>(`/governments/${id}`)
+    const safeId = sanitizeId(id)
+    return this.fetch<Government>(`/governments/${safeId}`, `government-${safeId}`)
   }
 
   async getGovernmentSummary(id: number): Promise<GovernmentSummary> {
-    return this.fetch<GovernmentSummary>(`/governments/${id}/summary`)
+    const safeId = sanitizeId(id)
+    return this.fetch<GovernmentSummary>(`/governments/${safeId}/summary`, `summary-${safeId}`)
   }
 
   async getCategories(): Promise<Category[]> {
-    return this.fetch<Category[]>('/categories')
+    return this.fetch<Category[]>('/categories', 'categories')
   }
 
   async getCategory(code: string): Promise<Category & { indicators: Indicator[] }> {
-    return this.fetch<Category & { indicators: Indicator[] }>(`/categories/${code}`)
+    const safeCode = sanitizeCode(code)
+    return this.fetch<Category & { indicators: Indicator[] }>(`/categories/${safeCode}`, `category-${safeCode}`)
   }
 
   async getIndicators(category?: string): Promise<Indicator[]> {
-    const query = category ? `?category=${encodeURIComponent(category)}` : ''
-    return this.fetch<Indicator[]>(`/indicators${query}`)
+    let query = ''
+    if (category) {
+      const safeCategory = sanitizeCode(category)
+      query = `?category=${encodeURIComponent(safeCategory)}`
+    }
+    return this.fetch<Indicator[]>(`/indicators${query}`, 'indicators')
   }
 
   async getIndicator(code: string): Promise<Indicator> {
-    return this.fetch<Indicator>(`/indicators/${code}`)
+    const safeCode = sanitizeCode(code)
+    return this.fetch<Indicator>(`/indicators/${safeCode}`, `indicator-${safeCode}`)
   }
 
   async getIndicatorTimeline(code: string): Promise<TimelineData> {
-    return this.fetch<TimelineData>(`/indicators/${code}/timeline`)
+    const safeCode = sanitizeCode(code)
+    return this.fetch<TimelineData>(`/indicators/${safeCode}/timeline`, `timeline-${safeCode}`)
   }
 
   async compareIndicator(code: string, governmentIds: number[]): Promise<ComparisonData> {
-    const ids = governmentIds.join(',')
-    return this.fetch<ComparisonData>(`/indicators/${code}/compare?government_ids=${ids}`)
+    const safeCode = sanitizeCode(code)
+    const safeIds = sanitizeGovernmentIds(governmentIds)
+    const idsParam = safeIds.join(',')
+    return this.fetch<ComparisonData>(
+      `/indicators/${safeCode}/compare?government_ids=${idsParam}`,
+      `compare-${safeCode}`
+    )
   }
 
   async checkHealth(): Promise<{ status: string }> {
-    return this.fetch<{ status: string }>('/health')
+    return this.fetch<{ status: string }>('/health', 'health')
+  }
+
+  cancelAllRequests(): void {
+    for (const controller of this.abortControllers.values()) {
+      controller.abort()
+    }
+    this.abortControllers.clear()
   }
 }
 

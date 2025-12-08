@@ -1,14 +1,63 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+.Python
 *.sqlite3
 *.db
 .venv/
+venv/
+env/
 .env
+.env.local
+.env.*.local
 
 # Node
 node_modules/
 dist/
+build/
+*.tsbuildinfo
+
+# IDE and OS
 .DS_Store
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# Testing and coverage
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Secrets and keys
+*.pem
+*.key
+secrets.json
+
+# Build artifacts
+*.egg-info/
+.eggs/
+*.egg
+MANIFEST
