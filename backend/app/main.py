@@ -4,7 +4,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import engine, Base
-from app.routers import health_router, governments_router, indicators_router
+from app.routers import (
+    health_router,
+    governments_router,
+    indicators_router,
+    categories_router,
+)
 
 
 @asynccontextmanager
@@ -37,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(governments_router)
     app.include_router(indicators_router)
+    app.include_router(categories_router)
 
     return app
 
