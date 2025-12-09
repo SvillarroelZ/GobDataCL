@@ -1,4 +1,5 @@
 import type { ComparisonData } from '../types'
+import { TrendArrow, isInvertedMetric } from './TrendIndicator'
 
 interface GovernmentComparisonProps {
   data: ComparisonData
@@ -6,6 +7,7 @@ interface GovernmentComparisonProps {
 
 export function GovernmentComparison({ data }: GovernmentComparisonProps) {
   const { indicator, explanation, comparison } = data
+  const isInverted = isInvertedMetric(indicator.code)
 
   function formatValue(value: number | null, unit: string): string {
     if (value === null) return 'Sin datos'
@@ -18,19 +20,6 @@ export function GovernmentComparison({ data }: GovernmentComparisonProps) {
     return value.toLocaleString('es-CL')
   }
 
-  function getChangeClass(change: number | null): string {
-    if (change === null) return ''
-    if (change > 0) return 'change-positive'
-    if (change < 0) return 'change-negative'
-    return 'change-neutral'
-  }
-
-  function formatChange(change: number | null): string {
-    if (change === null) return 'Sin cambio medible'
-    const sign = change > 0 ? '+' : ''
-    return `${sign}${change.toFixed(2)}`
-  }
-
   return (
     <div className="government-comparison">
       <div className="comparison-header">
@@ -40,15 +29,15 @@ export function GovernmentComparison({ data }: GovernmentComparisonProps) {
       </div>
 
       <div className="comparison-table-container">
-        <table className="comparison-table">
+        <table className="comparison-table" role="table">
           <thead>
             <tr>
-              <th>Gobierno</th>
-              <th>Periodo</th>
-              <th>Promedio</th>
-              <th>Minimo</th>
-              <th>Maximo</th>
-              <th>Cambio</th>
+              <th scope="col">Gobierno</th>
+              <th scope="col">Periodo</th>
+              <th scope="col">Promedio</th>
+              <th scope="col">Minimo</th>
+              <th scope="col">Maximo</th>
+              <th scope="col">Cambio</th>
             </tr>
           </thead>
           <tbody>
@@ -65,8 +54,12 @@ export function GovernmentComparison({ data }: GovernmentComparisonProps) {
                 <td className="metric-value">
                   {formatValue(item.summary.max, indicator.unit)}
                 </td>
-                <td className={`metric-change ${getChangeClass(item.summary.change)}`}>
-                  {formatChange(item.summary.change)}
+                <td className="metric-change">
+                  <TrendArrow 
+                    value={item.summary.change} 
+                    inverted={isInverted}
+                    size="md"
+                  />
                 </td>
               </tr>
             ))}
@@ -75,7 +68,17 @@ export function GovernmentComparison({ data }: GovernmentComparisonProps) {
       </div>
 
       <p className="source-info">
-        Fuente: {indicator.source_name}
+        Fuente:{' '}
+        {indicator.source_name}
+        {' '}
+        <a 
+          href={`https://www.google.com/search?q=${encodeURIComponent(indicator.source_name + ' ' + indicator.name + ' Chile datos oficiales')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="source-link"
+        >
+          Verificar fuente
+        </a>
       </p>
     </div>
   )

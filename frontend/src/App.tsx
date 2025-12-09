@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import './index.css'
 import api from './services/api'
 import { GovernmentSelector } from './components/GovernmentSelector'
@@ -7,10 +7,18 @@ import { GovernmentComparison } from './components/GovernmentComparison'
 import { ComparisonChart } from './components/ComparisonChart'
 import { TimelineChart } from './components/TimelineChart'
 import { IndicatorSelector } from './components/IndicatorSelector'
+import { FeaturedIndicators } from './components/FeaturedIndicators'
+import { ShareButton } from './components/ShareButton'
+import { GovernmentScoreCard } from './components/GovernmentScoreCard'
+import { SkeletonChart, SkeletonTable } from './components/SkeletonLoader'
 import { LoadingSpinner, ErrorMessage, EmptyState } from './components/StatusIndicators'
+import { SearchBar } from './components/SearchBar'
+import { ThemeProvider, ThemeToggle } from './components/ThemeToggle'
+import { ExportButtons } from './components/ExportButtons'
+import { useUrlState } from './hooks/useUrlState'
 import type { Government, GovernmentSummary, Indicator, Category, ComparisonData, TimelineData } from './types'
 
-type ViewMode = 'profile' | 'compare'
+type ViewMode = 'profile' | 'compare' | 'ranking'
 
 function App() {
   const [governments, setGovernments] = useState<Government[]>([])
@@ -26,12 +34,38 @@ function App() {
   const [selectedIndicatorCode, setSelectedIndicatorCode] = useState<string | null>(null)
   const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null)
   const [timelineData, setTimelineData] = useState<TimelineData | null>(null)
+  const [allComparisons, setAllComparisons] = useState<ComparisonData[]>([])
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [comparisonLoading, setComparisonLoading] = useState(false)
   const [timelineLoading, setTimelineLoading] = useState(false)
+  const [rankingLoading, setRankingLoading] = useState(false)
+  const [initialUrlLoaded, setInitialUrlLoaded] = useState(false)
+
+  // Ref for export functionality
+  const comparisonRef = useRef<HTMLDivElement>(null)
+  const rankingRef = useRef<HTMLDivElement>(null)
+
+  // URL state management
+  useUrlState(
+    {
+      view: viewMode,
+      indicator: selectedIndicatorCode || undefined,
+      governments: compareGovernmentIds.length > 0 ? compareGovernmentIds : undefined,
+      government: selectedGovernmentId || undefined,
+    },
+    (urlState) => {
+      if (!initialUrlLoaded) {
+        if (urlState.view) setViewMode(urlState.view)
+        if (urlState.indicator) setSelectedIndicatorCode(urlState.indicator)
+        if (urlState.governments) setCompareGovernmentIds(urlState.governments)
+        if (urlState.government) setSelectedGovernmentId(urlState.government)
+        setInitialUrlLoaded(true)
+      }
+    }
+  )
 
   const loadInitialData = useCallback(async () => {
     setLoading(true)
@@ -46,7 +80,8 @@ function App() {
       setIndicators(inds)
       setCategories(cats)
       
-      if (govs.length >= 2) {
+      // Only set default if no URL state was loaded
+      if (govs.length >= 2 && compareGovernmentIds.length === 0) {
         const lastTwo = govs.slice(0, 2).map(g => g.id)
         setCompareGovernmentIds(lastTwo)
       }
@@ -110,6 +145,32 @@ function App() {
       .finally(() => setTimelineLoading(false))
   }, [selectedIndicatorCode])
 
+  // Load all comparisons for ranking view
+  useEffect(() => {
+    if (viewMode !== 'ranking' || indicators.length === 0 || governments.length < 2) {
+      return
+    }
+
+    const govIds = governments.map(g => g.id)
+    
+    setRankingLoading(true)
+    setAllComparisons([])
+
+    Promise.all(
+      indicators.map(ind => 
+        api.compareIndicator(ind.code, govIds).catch(() => null)
+      )
+    )
+      .then(results => {
+        const validResults = results.filter((r): r is ComparisonData => r !== null)
+        setAllComparisons(validResults)
+      })
+      .catch(err => {
+        console.error('Error loading ranking data:', err)
+      })
+      .finally(() => setRankingLoading(false))
+  }, [viewMode, indicators, governments])
+
   function handleCompareToggle(id: number) {
     setCompareGovernmentIds(prev => {
       if (prev.includes(id)) {
@@ -148,22 +209,42 @@ function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div>
-          <p className="app-kicker">GobData CL</p>
-          <h1 className="app-title">Explorador de datos de gobiernos</h1>
-          <p className="app-subtitle">
-            Visualizacion neutral de indicadores oficiales por periodo de gobierno en Chile.
-          </p>
+        <div className="app-header-row">
+          <div className="app-header-content">
+            <p className="app-kicker">GobData CL</p>
+            <h1 className="app-title">Explorador de datos de gobiernos</h1>
+            <p className="app-subtitle">
+              Visualizacion neutral de indicadores oficiales por periodo de gobierno en Chile.
+            </p>
+          </div>
+          <div className="app-header-actions">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
       <main className="app-main">
+        <SearchBar
+          indicators={indicators}
+          onSelect={(code) => {
+            setSelectedIndicatorCode(code)
+            setViewMode('compare')
+          }}
+          placeholder="Buscar indicador (ej: PIB, desempleo, inflacion...)"
+        />
+
         <div className="view-tabs">
+          <button
+            className={`view-tab ${viewMode === 'ranking' ? 'active' : ''}`}
+            onClick={() => setViewMode('ranking')}
+          >
+            Balance general
+          </button>
           <button
             className={`view-tab ${viewMode === 'compare' ? 'active' : ''}`}
             onClick={() => setViewMode('compare')}
           >
-            Comparar gobiernos
+            Comparar indicador
           </button>
           <button
             className={`view-tab ${viewMode === 'profile' ? 'active' : ''}`}
@@ -172,6 +253,46 @@ function App() {
             Ver perfil
           </button>
         </div>
+
+        {viewMode === 'ranking' && (
+          <>
+            <div className="quick-compare-banner ranking-banner">
+              <h2 className="banner-title">Balance general de todos los gobiernos</h2>
+              <p className="banner-subtitle">
+                Analisis estadistico de todos los indicadores disponibles.
+                Muestra el porcentaje de indicadores que mejoraron o empeoraron durante cada gobierno.
+              </p>
+            </div>
+
+            {rankingLoading && (
+              <LoadingSpinner message="Analizando todos los indicadores..." />
+            )}
+
+            {!rankingLoading && allComparisons.length > 0 && (
+              <div ref={rankingRef}>
+                <div className="section-header-row" style={{ marginBottom: '16px' }}>
+                  <div />
+                  <ExportButtons
+                    targetRef={rankingRef}
+                    filename="gobdata-balance-general"
+                    data={null}
+                  />
+                </div>
+                <GovernmentScoreCard
+                  comparisons={allComparisons}
+                  governmentNames={Object.fromEntries(governments.map(g => [g.id, g.name]))}
+                />
+              </div>
+            )}
+
+            {!rankingLoading && allComparisons.length === 0 && (
+              <EmptyState
+                title="Sin datos suficientes"
+                description="No se encontraron suficientes datos para calcular el balance general."
+              />
+            )}
+          </>
+        )}
 
         {viewMode === 'compare' && (
           <>
@@ -202,14 +323,45 @@ function App() {
               </div>
             </div>
 
-            <section className="comparison-section">
+            <section className="comparison-section" ref={comparisonRef}>
+              <div className="section-header-row">
+                <div>
+                  <h2 className="section-heading">Comparar indicadores</h2>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {comparisonData && (
+                    <ExportButtons
+                      targetRef={comparisonRef}
+                      filename={`gobdata-${selectedIndicatorCode || 'comparacion'}`}
+                      data={comparisonData.data.map(d => ({
+                        gobierno: d.government_name,
+                        valor_inicio: d.start_value,
+                        valor_fin: d.end_value,
+                        cambio_porcentual: d.percent_change,
+                      }))}
+                    />
+                  )}
+                  <ShareButton
+                    view="compare"
+                    indicator={selectedIndicatorCode}
+                    governments={compareGovernmentIds}
+                  />
+                </div>
+              </div>
+
+              <FeaturedIndicators
+                indicators={indicators}
+                selectedCode={selectedIndicatorCode}
+                onSelect={setSelectedIndicatorCode}
+              />
+
               <div className="comparison-selectors">
                 <IndicatorSelector
                   indicators={indicators}
                   categories={categories}
                   selectedCode={selectedIndicatorCode}
                   onSelect={setSelectedIndicatorCode}
-                  label="Selecciona un indicador para comparar"
+                  label="O elige de la lista completa:"
                 />
 
                 <div className="government-checkboxes">
@@ -223,6 +375,7 @@ function App() {
                           type="checkbox"
                           checked={compareGovernmentIds.includes(gov.id)}
                           onChange={() => handleCompareToggle(gov.id)}
+                          aria-label={`Incluir a ${gov.name}`}
                         />
                         <span>{gov.name} ({startYear}-{endYear})</span>
                       </label>
@@ -234,12 +387,12 @@ function App() {
               {!selectedIndicatorCode && (
                 <EmptyState
                   title="Selecciona un indicador"
-                  description="Elige un indicador de la lista para ver su evolucion a traves del tiempo y comparar entre gobiernos."
+                  description="Elige un indicador de los mas consultados arriba o de la lista completa para ver su evolucion."
                 />
               )}
 
               {timelineLoading && (
-                <LoadingSpinner message="Cargando datos historicos..." />
+                <SkeletonChart />
               )}
 
               {!timelineLoading && timelineData && (
@@ -247,7 +400,7 @@ function App() {
               )}
 
               {comparisonLoading && (
-                <LoadingSpinner message="Calculando comparacion..." />
+                <SkeletonTable />
               )}
 
               {!comparisonLoading && comparisonData && compareGovernmentIds.length >= 2 && (
