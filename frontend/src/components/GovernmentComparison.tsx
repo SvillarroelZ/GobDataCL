@@ -1,5 +1,6 @@
 import type { ComparisonData } from '../types'
 import { TrendArrow, isInvertedMetric } from './TrendIndicator'
+import { ExpandableText } from './ExpandableText'
 
 interface GovernmentComparisonProps {
   data: ComparisonData
@@ -24,7 +25,9 @@ export function GovernmentComparison({ data }: GovernmentComparisonProps) {
     <div className="government-comparison">
       <div className="comparison-header">
         <h3 className="indicator-name">{indicator.name}</h3>
-        <p className="indicator-description">{indicator.description}</p>
+        <p className="indicator-description">
+          <ExpandableText text={indicator.description} maxLength={250} />
+        </p>
         <p className="comparison-explanation">{explanation}</p>
       </div>
 

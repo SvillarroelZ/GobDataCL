@@ -1921,3 +1921,42 @@ body {
   }
 }
 
+
+/* ========== EXPANDABLE TEXT ========== */
+.expandable-text {
+  display: inline;
+}
+
+.expand-button {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  font-weight: 500;
+}
+
+.expand-button:hover {
+  text-decoration: underline;
+}
+
+.truncated-text {
+  display: inline;
+}
+
+/* Long text containers */
+.indicator-description,
+.chart-subtitle,
+.profile-bio {
+  line-height: 1.6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Limit width for readability */
+.indicator-description {
+  max-width: 800px;
+}
+

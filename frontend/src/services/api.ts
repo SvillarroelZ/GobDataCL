@@ -1,4 +1,22 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Detectar URL del backend automaticamente en Codespaces
+function getApiBaseUrl(): string {
+  // Si hay variable de entorno, usarla
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
+  }
+  
+  // En Codespaces, construir URL del backend basado en la URL actual
+  const currentHost = window.location.hostname
+  if (currentHost.includes('.app.github.dev')) {
+    // Reemplazar el puerto 5173 por 8000 en la URL de Codespaces
+    return window.location.origin.replace('-5173.', '-8000.').replace('-5174.', '-8000.')
+  }
+  
+  // Local development
+  return 'http://localhost:8000'
+}
+
+const API_BASE_URL = getApiBaseUrl()
 
 const MAX_REQUEST_TIMEOUT = 30000
 const MAX_GOVERNMENT_IDS = 10

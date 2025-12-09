@@ -11,6 +11,7 @@ import {
   ReferenceArea,
 } from 'recharts'
 import type { TimelineData } from '../types'
+import { ExpandableText } from './ExpandableText'
 
 interface TimelineChartProps {
   data: TimelineData
@@ -86,7 +87,9 @@ export function TimelineChart({ data }: TimelineChartProps) {
   return (
     <div className="timeline-chart">
       <h4 className="chart-title">{indicator.name} a traves del tiempo</h4>
-      <p className="chart-subtitle">{indicator.description}</p>
+      <p className="chart-subtitle">
+        <ExpandableText text={indicator.description} maxLength={200} />
+      </p>
       
       <div className="chart-container">
         <ResponsiveContainer width="100%" height={400}>
